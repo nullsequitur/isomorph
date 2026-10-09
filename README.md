@@ -1,4 +1,5 @@
-# Multigrub
+# IsoMorph
+> Morphing ISOs into a seamless boot environment
 
 A robust, automated tool for creating a multiboot USB drive with GRUB. 
 This project uses a combination of a native Bash installer for disk management and Python 3 for dynamic configuration generation.
