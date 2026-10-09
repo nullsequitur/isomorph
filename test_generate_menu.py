@@ -55,13 +55,45 @@ class TestGenerateMenu(unittest.TestCase):
             content = f.read()
             
         expected_template = """menuentry "Ubuntu" {
-    set isofile="/payload/unix/ubuntu-22.04-desktop-amd64.iso"
+    search --no-floppy --set=root --label UNIX_ISOS
+    probe -u $root --set=rootuuid
+    set isofile="/ubuntu-22.04-desktop-amd64.iso"
     loopback loop $isofile
     linux (loop)/casper/vmlinuz boot=casper iso-scan/filename=$isofile quiet splash ---
     initrd (loop)/casper/initrd
 }
 """
         self.assertEqual(content, expected_template)
+
+    @patch('sys.stdout', new_callable=StringIO)
+    def test_generate_entries_malicious_filename(self, mock_stdout):
+        # Create rules.json
+        rules_data = {
+            "rules": [
+                {
+                    "match": "*.iso",
+                    "menuentry": "Test",
+                    "kernel_path": "/vmlinuz",
+                    "initrd_path": "/initrd",
+                    "boot_params": ""
+                }
+            ]
+        }
+        with open('rules.json', 'w') as f:
+            json.dump(rules_data, f)
+            
+        # Create a malicious ISO
+        open('payload/unix/inject";rm#.iso', 'w').close()
+        open('payload/unix/normal.iso', 'w').close()
+        
+        generate_entries()
+        
+        with open('entries.cfg', 'r') as f:
+            content = f.read()
+            
+        self.assertNotIn("inject", content)
+        self.assertIn("normal.iso", content)
+        self.assertIn("Warning: ISO filename 'inject\";rm#.iso' contains unsafe characters. Skipping.", mock_stdout.getvalue())
 
     @patch('sys.stdout', new_callable=StringIO)
     def test_generate_entries_no_matching_rule(self, mock_stdout):

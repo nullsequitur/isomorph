@@ -17,7 +17,7 @@ if [[ ! -b "${RAW_DEV}" ]]; then
     exit 1
 fi
 
-TARGET_DEV=$(realpath "${RAW_DEV}")
+TARGET_DEV=$(realpath -- "${RAW_DEV}")
 
 # Resolve partition suffix logic
 if [[ "${TARGET_DEV}" =~ [0-9]$ ]]; then
@@ -45,40 +45,40 @@ cleanup() {
     echo "Cleaning up..."
     for mnt in "${EFI_MNT}" "${UNIX_MNT}" "${WINDOWS_MNT}"; do
         if [[ -n "${mnt:-}" ]] && [[ -d "${mnt}" ]]; then
-            if mountpoint -q "${mnt}"; then
-                if ! umount "${mnt}"; then
+            if mountpoint -q -- "${mnt}"; then
+                if ! umount -- "${mnt}"; then
                     echo "Warning: Could not unmount ${mnt}. Skipping removal."
                     continue
                 fi
             fi
-            rm -rf "${mnt}"
+            rm -rf -- "${mnt}"
         fi
     done
 }
 trap cleanup EXIT ERR
 
 echo "Mounting partitions..."
-mount "${EFI_PART}" "${EFI_MNT}"
-mount "${UNIX_PART}" "${UNIX_MNT}"
-mount "${WINDOWS_PART}" "${WINDOWS_MNT}"
+mount -- "${EFI_PART}" "${EFI_MNT}"
+mount -- "${UNIX_PART}" "${UNIX_MNT}"
+mount -- "${WINDOWS_PART}" "${WINDOWS_MNT}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 echo "Updating EFI partition (grub configuration)..."
 mkdir -p "${EFI_MNT}/boot/grub"
-cp "${SCRIPT_DIR}/grub.cfg" "${EFI_MNT}/boot/grub/"
-cp "${SCRIPT_DIR}/entries.cfg" "${EFI_MNT}/boot/grub/"
+cp -- "${SCRIPT_DIR}/grub.cfg" "${EFI_MNT}/boot/grub/"
+cp -- "${SCRIPT_DIR}/entries.cfg" "${EFI_MNT}/boot/grub/"
 
 echo "Updating Unix partition..."
 if [[ -d "${SCRIPT_DIR}/payload/unix/" ]]; then
-    rsync -av "${SCRIPT_DIR}/payload/unix/" "${UNIX_MNT}/"
+    rsync -av -- "${SCRIPT_DIR}/payload/unix/" "${UNIX_MNT}/"
 else
     echo "Warning: ${SCRIPT_DIR}/payload/unix/ does not exist. Skipping."
 fi
 
 echo "Updating Windows partition..."
 if [[ -d "${SCRIPT_DIR}/payload/windows/" ]]; then
-    rsync -av "${SCRIPT_DIR}/payload/windows/" "${WINDOWS_MNT}/"
+    rsync -av -- "${SCRIPT_DIR}/payload/windows/" "${WINDOWS_MNT}/"
 else
     echo "Warning: ${SCRIPT_DIR}/payload/windows/ does not exist. Skipping."
 fi

@@ -16,7 +16,7 @@ if [[ $EUID -ne 0 ]]; then
     exit 1
 fi
 
-TARGET_DEVICE=$(realpath "$1")
+TARGET_DEVICE=$(realpath -- "$1")
 
 echo "Target device set to: ${TARGET_DEVICE}"
 
@@ -27,7 +27,7 @@ if [[ ! -b "$TARGET_DEVICE" ]]; then
 fi
 
 # Ensure device is not mounted
-if lsblk -n -o MOUNTPOINT "$TARGET_DEVICE" | grep -q "[a-zA-Z]"; then
+if lsblk -n -o MOUNTPOINT -- "$TARGET_DEVICE" | grep -q "\S"; then
     echo "Error: Device $TARGET_DEVICE has mounted partitions."
     exit 1
 fi
@@ -35,7 +35,7 @@ fi
 # 1. Safety First
 echo "=== WARNING ==="
 echo "You are about to wipe the following device:"
-lsblk -d -n -o NAME,SIZE "$TARGET_DEVICE"
+lsblk -d -n -o NAME,SIZE -- "$TARGET_DEVICE"
 echo "ALL DATA ON THIS DEVICE WILL BE LOST!"
 read -r -p "Type 'YES' (case-sensitive) to proceed: " confirm || true
 
@@ -45,7 +45,7 @@ if [[ "$confirm" != "YES" ]]; then
 fi
 
 # Get total size of disk in bytes/GB for validation
-TOTAL_BYTES=$(lsblk -b -d -n -o SIZE "$TARGET_DEVICE")
+TOTAL_BYTES=$(lsblk -b -d -n -o SIZE -- "$TARGET_DEVICE")
 TOTAL_GB=$(( TOTAL_BYTES / 1024 / 1024 / 1024 ))
 
 echo "Total disk capacity: ${TOTAL_GB} GB"
@@ -68,35 +68,34 @@ fi
 
 # 3. Execution
 echo "Wiping and partitioning $TARGET_DEVICE..."
-parted -s "$TARGET_DEVICE" mklabel gpt
+parted -s -- "$TARGET_DEVICE" mklabel gpt
 
 # Partition 1: BIOS Boot (1MB)
-parted -s "$TARGET_DEVICE" mkpart primary 1MiB 2MiB
-parted -s "$TARGET_DEVICE" set 1 bios_grub on
+parted -s -- "$TARGET_DEVICE" mkpart primary 1MiB 2MiB
+parted -s -- "$TARGET_DEVICE" set 1 bios_grub on
 
 # Partition 2: EFI System (512MB)
-parted -s "$TARGET_DEVICE" mkpart primary fat32 2MiB 514MiB
-parted -s "$TARGET_DEVICE" set 2 esp on
-parted -s "$TARGET_DEVICE" set 2 boot on
+parted -s -- "$TARGET_DEVICE" mkpart primary fat32 2MiB 514MiB
+parted -s -- "$TARGET_DEVICE" set 2 esp on
+parted -s -- "$TARGET_DEVICE" set 2 boot on
 
 # Partition 3: Unix ISOs (ext4)
 unix_end_mb=$(( 514 + unix_size_gb * 1024 ))
-parted -s "$TARGET_DEVICE" mkpart primary ext4 514MiB "${unix_end_mb}MiB"
+parted -s -- "$TARGET_DEVICE" mkpart primary ext4 514MiB "${unix_end_mb}MiB"
 
 # Partition 4: Windows ISOs (NTFS)
 win_end_mb=$(( unix_end_mb + win_size_gb * 1024 ))
-parted -s "$TARGET_DEVICE" mkpart primary ntfs "${unix_end_mb}MiB" "${win_end_mb}MiB"
+parted -s -- "$TARGET_DEVICE" mkpart primary ntfs "${unix_end_mb}MiB" "${win_end_mb}MiB"
 
-# Partition 5: Data (exFAT, 100% of remaining space)
-# Note: parted might warn if exfat is specified as fs-type in mkpart, we can just leave it as ext2 or blank and format later
-parted -s "$TARGET_DEVICE" mkpart primary ext2 "${win_end_mb}MiB" 100%
+# Partition 5: Data (exFAT)
+parted -s -- "$TARGET_DEVICE" mkpart primary ext2 "${win_end_mb}MiB" 100%
 
-# Force kernel to reread partition table
-partprobe "$TARGET_DEVICE"
-sleep 2
+# Force kernel to reread partition table and wait for device nodes
+partprobe -- "$TARGET_DEVICE"
+udevadm settle
 
 # 4. Formatting
-# Determine partition suffix (e.g., /dev/nvme0n1 -> p1, /dev/sdb -> 1)
+# Determine partition suffix
 if [[ "$TARGET_DEVICE" =~ [0-9]$ ]]; then
     PART_SUFFIX="p"
 else
@@ -113,16 +112,16 @@ echo "Formatting partitions..."
 # Partition 1 is BIOS Boot, no formatting needed.
 
 # EFI (FAT32)
-mkfs.fat -F32 "$PART2"
+mkfs.fat -F 32 -- "$PART2"
 
 # Unix (ext4)
-mkfs.ext4 "$PART3"
+mkfs.ext4 -F -L UNIX_ISOS -- "$PART3"
 
 # Windows (NTFS)
-mkfs.ntfs -f "$PART4"
+mkfs.ntfs -f -q -L WIN_ISOS -- "$PART4"
 
 # Data (exFAT)
-mkfs.exfat "$PART5"
+mkfs.exfat -n DATA -- "$PART5"
 
 echo "Partitioning and formatting complete!"
 
@@ -133,28 +132,28 @@ TEMP_MNT=$(mktemp -d)
 
 cleanup() {
     echo "Cleaning up..."
-    if mountpoint -q "$TEMP_MNT"; then
-        if ! umount "$TEMP_MNT"; then
+    if mountpoint -q -- "$TEMP_MNT"; then
+        if ! umount -- "$TEMP_MNT"; then
             echo "Warning: Could not unmount $TEMP_MNT. Skipping removal."
             return
         fi
     fi
-    rm -rf "$TEMP_MNT"
+    rm -rf -- "$TEMP_MNT"
 }
 trap cleanup EXIT
 
 # Mount EFI partition (PART2)
-mount "$PART2" "$TEMP_MNT"
+mount -- "$PART2" "$TEMP_MNT"
 
 # Create boot directory
 mkdir -p "$TEMP_MNT/boot"
 
 # Install GRUB for UEFI
 echo "Installing GRUB for UEFI..."
-grub-install --target=x86_64-efi --efi-directory="$TEMP_MNT" --boot-directory="$TEMP_MNT/boot" --removable "$TARGET_DEVICE"
+grub-install --target=x86_64-efi --efi-directory="$TEMP_MNT" --boot-directory="$TEMP_MNT/boot" --removable -- "$TARGET_DEVICE"
 
 # Install GRUB for BIOS (Legacy)
 echo "Installing GRUB for BIOS (Legacy)..."
-grub-install --target=i386-pc --boot-directory="$TEMP_MNT/boot" "$TARGET_DEVICE"
+grub-install --target=i386-pc --boot-directory="$TEMP_MNT/boot" -- "$TARGET_DEVICE"
 
 echo "GRUB installation complete!"
