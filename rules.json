@@ -1,0 +1,25 @@
+{
+  "rules": [
+    {
+      "match": "*ubuntu*.iso",
+      "menuentry": "Ubuntu Live",
+      "kernel_path": "/casper/vmlinuz",
+      "initrd_path": "/casper/initrd",
+      "boot_params": "boot=casper iso-scan/filename=${iso_path} quiet splash --"
+    },
+    {
+      "match": "archlinux-*.iso",
+      "menuentry": "Arch Linux",
+      "kernel_path": "/arch/boot/x86_64/vmlinuz-linux",
+      "initrd_path": "/arch/boot/x86_64/initramfs-linux.img",
+      "boot_params": "img_dev=/dev/disk/by-uuid/${root_uuid} img_loop=${iso_path} earlymodules=loop"
+    },
+    {
+      "match": "debian-live-*.iso",
+      "menuentry": "Debian Live",
+      "kernel_path": "/live/vmlinuz",
+      "initrd_path": "/live/initrd.img",
+      "boot_params": "boot=live components findiso=${iso_path} quiet splash"
+    }
+  ]
+}

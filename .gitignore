@@ -1,0 +1,22 @@
+*
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Environments
+.env
+.venv
+env/
+venv/
+
+# IDEs & OS
+.vscode/
+.idea/
+.DS_Store
+
+# Project-specific generated / large files
+payload/**/*.iso
+legacy/iso/*.iso
